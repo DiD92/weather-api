@@ -1,10 +1,65 @@
-use serde::{Deserialize, Serialize};
+use serde::{de::Error, de::Visitor, Deserialize, Deserializer, Serialize};
 
-#[derive(Deserialize, Serialize, Copy, Clone)]
+fn deserialize_response_code<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct CodeVisitor;
+
+    impl<'de> Visitor<'de> for CodeVisitor {
+        type Value = u32;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(formatter, "status code either in string or u32 format")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            match value.parse::<u32>() {
+                Ok(num) => Ok(num),
+                Err(_) => Err(E::custom(format!("Invalid status code - {}", value))),
+            }
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            match value.parse::<u32>() {
+                Ok(num) => Ok(num),
+                Err(_) => Err(E::custom(format!("Invalid status code - {}", value))),
+            }
+        }
+
+        fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(value)
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(value as u32)
+        }
+    }
+
+    deserializer.deserialize_any(CodeVisitor)
+}
+
+#[derive(Deserialize, Serialize, Clone)]
 pub struct APIResponse {
     #[serde(skip_serializing)]
-    pub cod: u16,
+    #[serde(deserialize_with = "deserialize_response_code")]
+    pub cod: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 pub struct APIClient {

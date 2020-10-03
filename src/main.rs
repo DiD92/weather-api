@@ -1,12 +1,12 @@
+use actix_web::{get, App, HttpResponse, HttpServer, Responder};
 use actix_web::{middleware::Logger, web};
-use actix_web::{post, App, HttpResponse, HttpServer, Responder};
 use env_logger::Env;
 use std::sync::{Arc, Mutex};
 
 mod api_models;
 mod weather_api;
 
-#[post("/weather")]
+#[get("/weather")]
 async fn current_weather_route(
     data: web::Data<Arc<Mutex<api_models::APPState>>>,
     body: web::Json<api_models::RequestBody>,
@@ -27,7 +27,13 @@ async fn current_weather_route(
             .await
         {
             Ok(response) => {
-                if let Err(msg) = app_state.cache_response(response, query_tuple.1) {
+                if response.cod != 200 {
+                    return HttpResponse::Ok().json(api_models::RequestResponse::build_failure(
+                        response.message.unwrap(),
+                    ));
+                }
+
+                if let Err(msg) = app_state.cache_response(response.clone(), query_tuple.1) {
                     log::warn!(
                         "Failed to created cache for ({}|{}) - {}",
                         query_tuple.0,

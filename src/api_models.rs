@@ -18,7 +18,7 @@ where
         "c" | "celsius" => Ok('c'),
         &_ => {
             log::warn!("Invalid temperature parameter supplied - {}", s);
-            return Err(Error::custom("Invalid temperature parameter."));
+            Err(Error::custom("Invalid temperature parameter."))
         }
     }
 }
@@ -27,32 +27,39 @@ where
 pub struct RequestBody {
     pub city_id: u32,
     #[serde(deserialize_with = "deserialize_from_str")]
-    pub temp_format: char,
+    #[serde(rename = "units")]
+    pub temperature_unit: char,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct RequestResponse {
-    pub success: bool,
-    pub data: ResponseData,
+    success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<ResponseData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    msg: Option<String>,
 }
 
 impl RequestResponse {
     pub fn build_success(api_response: APIResponse) -> Self {
         RequestResponse {
             success: true,
-            data: ResponseData::Success(api_response),
+            data: Some(ResponseData::Success(api_response)),
+            msg: None,
         }
     }
 
     pub fn build_failure(failure_msg: String) -> Self {
         RequestResponse {
             success: false,
-            data: ResponseData::Failure(failure_msg),
+            data: None,
+            msg: Some(failure_msg),
         }
     }
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(untagged)]
 pub enum ResponseData {
     Success(APIResponse),
     Failure(String),
@@ -88,7 +95,7 @@ impl<T> CachedElement<T> {
 
 pub struct APPState {
     pub api_client: crate::weather_api::APIClient,
-    api_cache: HashMap<u32, CachedElement<APIResponse>>,
+    api_cache: HashMap<(u32, char), CachedElement<APIResponse>>,
 }
 
 impl APPState {
@@ -101,20 +108,29 @@ impl APPState {
         }
     }
 
-    pub fn cache_response(&mut self, response: APIResponse) -> Result<(), String> {
+    pub fn cache_response(
+        &mut self,
+        response: APIResponse,
+        temperature_unit_used: char,
+    ) -> Result<(), String> {
         match response.id {
             Some(city_id) => {
-                if !self.check_and_clear_cache(city_id) {
+                if !self.check_and_clear_cache((city_id, temperature_unit_used)) {
                     log::debug!("Generating cache for api response - {}", city_id);
 
                     let cache = CachedElement::new(response, APPState::CACHE_EXPIRY_MILIS);
 
-                    let _ = self.api_cache.insert(city_id, cache);
+                    let _ = self
+                        .api_cache
+                        .insert((city_id, temperature_unit_used), cache);
 
                     return Ok(());
                 }
 
-                log::warn!("Tried to cache already cached api response for id - {}", city_id);
+                log::warn!(
+                    "Tried to cache already cached api response for id - {}",
+                    city_id
+                );
 
                 Err("APIResponse is already cached!".into())
             }
@@ -122,7 +138,7 @@ impl APPState {
         }
     }
 
-    pub fn get_cache_for(&mut self, cache_key: u32) -> Option<&APIResponse> {
+    pub fn get_cache_for(&mut self, cache_key: (u32, char)) -> Option<&APIResponse> {
         if self.check_and_clear_cache(cache_key) {
             return Some(&self.api_cache.get(&cache_key).unwrap().element);
         }
@@ -130,14 +146,14 @@ impl APPState {
         None
     }
 
-    pub fn has_valid_cache_for(&self, cache_key: u32) -> bool {
+    pub fn has_valid_cache_for(&self, cache_key: (u32, char)) -> bool {
         match self.api_cache.get(&cache_key) {
             Some(cache) => !cache.has_expired(),
             None => false,
         }
     }
 
-    fn check_and_clear_cache(&mut self, cache_key: u32) -> bool {
+    fn check_and_clear_cache(&mut self, cache_key: (u32, char)) -> bool {
         match self.api_cache.get(&cache_key) {
             Some(cache) => {
                 if cache.has_expired() {
@@ -145,7 +161,7 @@ impl APPState {
                     return false;
                 }
 
-                return true;
+                true
             }
             None => false,
         }
@@ -185,16 +201,16 @@ mod test_app_state {
     fn check_cache_storage() {
         let mut app_state = APPState::build("11".into());
 
-        let cache_key = 1;
+        let cache_key = (1, 'C');
 
         let api_response = APIResponse {
             cod: 200,
-            id: Some(cache_key),
+            id: Some(cache_key.0),
         };
 
         assert!(!app_state.has_valid_cache_for(cache_key));
 
-        assert_eq!(app_state.cache_response(api_response), Ok(()));
+        assert_eq!(app_state.cache_response(api_response, cache_key.1), Ok(()));
 
         assert!(app_state.has_valid_cache_for(cache_key));
     }

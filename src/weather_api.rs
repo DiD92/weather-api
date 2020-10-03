@@ -1,8 +1,8 @@
-use log;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Copy, Clone)]
 pub struct APIResponse {
+    #[serde(skip_serializing)]
     pub cod: u16,
     pub id: Option<u32>,
 }

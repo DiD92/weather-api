@@ -1,7 +1,6 @@
 use actix_web::{middleware::Logger, web};
 use actix_web::{post, App, HttpResponse, HttpServer, Responder};
 use env_logger::Env;
-use log;
 use std::sync::{Arc, Mutex};
 
 mod api_models;
@@ -14,20 +13,30 @@ async fn current_weather_route(
 ) -> impl Responder {
     let mut app_state = data.lock().unwrap();
 
-    let city_id = body.city_id;
-    let temperature_units = body.temp_format;
+    let query_tuple = (body.city_id, body.temperature_unit);
 
-    if app_state.has_valid_cache_for(city_id) {
-        return HttpResponse::Ok().json(app_state.get_cache_for(city_id).unwrap());
+    if app_state.has_valid_cache_for(query_tuple) {
+        let cached_response = app_state.get_cache_for(query_tuple).unwrap();
+        HttpResponse::Ok().json(api_models::RequestResponse::build_success(
+            cached_response.to_owned(),
+        ))
     } else {
-        match app_state.api_client.query(city_id, temperature_units).await {
+        match app_state
+            .api_client
+            .query(query_tuple.0, query_tuple.1)
+            .await
+        {
             Ok(response) => {
-                if let Err(msg) = app_state.cache_response(response) {
-                    log::warn!("Failed to created cache for {} - {}", city_id, msg);
+                if let Err(msg) = app_state.cache_response(response, query_tuple.1) {
+                    log::warn!(
+                        "Failed to created cache for ({}|{}) - {}",
+                        query_tuple.0,
+                        query_tuple.1,
+                        msg
+                    );
                 }
 
-                return HttpResponse::Ok()
-                    .json(api_models::RequestResponse::build_success(response));
+                HttpResponse::Ok().json(api_models::RequestResponse::build_success(response))
             }
             Err(err) => {
                 HttpResponse::Ok().json(api_models::RequestResponse::build_failure(err.to_string()))

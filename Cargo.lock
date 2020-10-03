@@ -1538,6 +1538,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_with"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f87df303fd746404ca055fffb3a1850243ee3404f9bda4dc5760132814dd0734"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "sha-1"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1794,7 +1803,6 @@ dependencies = [
  "memchr",
  "mio",
  "mio-uds",
- "num_cpus",
  "pin-project-lite",
  "signal-hook-registry",
  "slab",
@@ -2060,6 +2068,7 @@ dependencies = [
  "log",
  "reqwest",
  "serde",
+ "serde_with",
 ]
 
 [[package]]

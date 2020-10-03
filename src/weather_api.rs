@@ -1,6 +1,11 @@
 use log;
+use serde::{Deserialize, Serialize};
 
-use crate::api_models;
+#[derive(Deserialize, Serialize, Copy, Clone)]
+pub struct APIResponse {
+    pub cod: u16,
+    pub id: Option<u32>,
+}
 
 pub struct APIClient {
     pub client: reqwest::Client,
@@ -21,12 +26,14 @@ impl APIClient {
         &self,
         city_id: u32,
         temperature_units: char,
-    ) -> Result<api_models::APIResponse, reqwest::Error> {
+    ) -> Result<APIResponse, reqwest::Error> {
         let query_params = &[
             ("appid", &self.api_key),
             ("id", &city_id.to_string()),
             ("units", &temperature_units.to_string()),
         ];
+
+        log::debug!("Querying OpenWeatherMap API for city id - {}", city_id);
 
         let api_request = self
             .client
@@ -34,7 +41,7 @@ impl APIClient {
             .query(query_params)
             .send()
             .await?
-            .json::<api_models::APIResponse>()
+            .json::<APIResponse>()
             .await?;
 
         Ok(api_request)

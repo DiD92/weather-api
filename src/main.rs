@@ -26,9 +26,12 @@ async fn current_weather_route(
                     log::warn!("Failed to created cache for {} - {}", city_id, msg);
                 }
 
-                return HttpResponse::Ok().json(api_models::RequestResponse::build_success(response));
+                return HttpResponse::Ok()
+                    .json(api_models::RequestResponse::build_success(response));
             }
-            Err(err) => HttpResponse::Ok().json(api_models::RequestResponse::build_failure(err.to_string()))
+            Err(err) => {
+                HttpResponse::Ok().json(api_models::RequestResponse::build_failure(err.to_string()))
+            }
         }
     }
 }

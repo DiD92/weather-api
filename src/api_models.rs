@@ -3,6 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
+use crate::weather_api::APIResponse;
+
 fn deserialize_from_str<'de, D>(deserializer: D) -> Result<char, D::Error>
 where
     D: Deserializer<'de>,
@@ -15,7 +17,7 @@ where
         "f" | "fahrenheit" => Ok('f'),
         "c" | "celsius" => Ok('c'),
         &_ => {
-            // TODO: Log error here
+            log::warn!("Invalid temperature parameter supplied - {}", s);
             return Err(Error::custom("Invalid temperature parameter."));
         }
     }
@@ -31,21 +33,21 @@ pub struct RequestBody {
 #[derive(Deserialize, Serialize)]
 pub struct RequestResponse {
     pub success: bool,
-    pub data: ResponseData
+    pub data: ResponseData,
 }
 
 impl RequestResponse {
     pub fn build_success(api_response: APIResponse) -> Self {
         RequestResponse {
             success: true,
-            data: ResponseData::Success(api_response)
+            data: ResponseData::Success(api_response),
         }
     }
 
     pub fn build_failure(failure_msg: String) -> Self {
         RequestResponse {
             success: false,
-            data: ResponseData::Failure(failure_msg)
+            data: ResponseData::Failure(failure_msg),
         }
     }
 }
@@ -53,13 +55,7 @@ impl RequestResponse {
 #[derive(Deserialize, Serialize)]
 pub enum ResponseData {
     Success(APIResponse),
-    Failure(String)
-}
-
-#[derive(Deserialize, Serialize, Copy, Clone)]
-pub struct APIResponse {
-    pub cod: u16,
-    pub id: Option<u32>,
+    Failure(String),
 }
 
 pub struct CachedElement<T> {
@@ -109,12 +105,16 @@ impl APPState {
         match response.id {
             Some(city_id) => {
                 if !self.check_and_clear_cache(city_id) {
+                    log::debug!("Generating cache for api response - {}", city_id);
+
                     let cache = CachedElement::new(response, APPState::CACHE_EXPIRY_MILIS);
 
                     let _ = self.api_cache.insert(city_id, cache);
 
                     return Ok(());
                 }
+
+                log::warn!("Tried to cache already cached api response for id - {}", city_id);
 
                 Err("APIResponse is already cached!".into())
             }

@@ -28,6 +28,34 @@ pub struct RequestBody {
     pub temp_format: char,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct RequestResponse {
+    pub success: bool,
+    pub data: ResponseData
+}
+
+impl RequestResponse {
+    pub fn build_success(api_response: APIResponse) -> Self {
+        RequestResponse {
+            success: true,
+            data: ResponseData::Success(api_response)
+        }
+    }
+
+    pub fn build_failure(failure_msg: String) -> Self {
+        RequestResponse {
+            success: false,
+            data: ResponseData::Failure(failure_msg)
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum ResponseData {
+    Success(APIResponse),
+    Failure(String)
+}
+
 #[derive(Deserialize, Serialize, Copy, Clone)]
 pub struct APIResponse {
     pub cod: u16,
@@ -44,7 +72,7 @@ impl<T> CachedElement<T> {
     pub fn new(element: T, object_expiry_milis: u128) -> Self {
         Self {
             element,
-            expires_at: Self::generate_expiry_time(object_expiry_milis)
+            expires_at: Self::generate_expiry_time(object_expiry_milis),
         }
     }
 
@@ -57,23 +85,23 @@ impl<T> CachedElement<T> {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_millis() + expiry_milis
+            .as_millis()
+            + expiry_milis
     }
 }
 
 pub struct APPState {
-    pub api_key: String,
+    pub api_client: crate::weather_api::APIClient,
     api_cache: HashMap<u32, CachedElement<APIResponse>>,
 }
 
 impl APPState {
-
     pub const CACHE_EXPIRY_MILIS: u128 = 300_000;
 
     pub fn build(api_key: String) -> Self {
         Self {
-            api_key,
             api_cache: HashMap::new(),
+            api_client: crate::weather_api::APIClient::build(api_key),
         }
     }
 
@@ -81,7 +109,6 @@ impl APPState {
         match response.id {
             Some(city_id) => {
                 if !self.check_and_clear_cache(city_id) {
-
                     let cache = CachedElement::new(response, APPState::CACHE_EXPIRY_MILIS);
 
                     let _ = self.api_cache.insert(city_id, cache);
@@ -160,7 +187,10 @@ mod test_app_state {
 
         let cache_key = 1;
 
-        let api_response = APIResponse {cod: 200, id: Some(cache_key)};
+        let api_response = APIResponse {
+            cod: 200,
+            id: Some(cache_key),
+        };
 
         assert!(!app_state.has_valid_cache_for(cache_key));
 

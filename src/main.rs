@@ -12,27 +12,23 @@ async fn current_weather_route(
     data: web::Data<Arc<Mutex<api_models::APPState>>>,
     body: web::Json<api_models::RequestBody>,
 ) -> impl Responder {
-
     let mut app_state = data.lock().unwrap();
 
     let city_id = body.city_id;
-    let temperature_fmt = body.temp_format;
+    let temperature_units = body.temp_format;
 
     if app_state.has_valid_cache_for(city_id) {
         return HttpResponse::Ok().json(app_state.get_cache_for(city_id).unwrap());
     } else {
-        let request_result =
-            weather_api::get_weather_data_for(city_id, temperature_fmt, &app_state.api_key);
-
-        match request_result.await {
-            Some(response) => {
+        match app_state.api_client.query(city_id, temperature_units).await {
+            Ok(response) => {
                 if let Err(msg) = app_state.cache_response(response) {
                     log::warn!("Failed to created cache for {} - {}", city_id, msg);
                 }
 
-                HttpResponse::Ok().json(&response)
+                return HttpResponse::Ok().json(api_models::RequestResponse::build_success(response));
             }
-            None => HttpResponse::Ok().json("b"),
+            Err(err) => HttpResponse::Ok().json(api_models::RequestResponse::build_failure(err.to_string()))
         }
     }
 }

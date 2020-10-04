@@ -226,7 +226,11 @@ mod test_app_state {
         let api_response = APIResponse {
             cod: 200,
             id: Some(cache_key.0),
+            name: None,
             message: None,
+            conditions: None,
+            details: None,
+            wind: None,
         };
 
         assert!(!app_state.has_valid_cache_for(&cache_key));

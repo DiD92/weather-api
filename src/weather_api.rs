@@ -59,7 +59,40 @@ pub struct APIResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename(deserialize = "main"))]
+    pub details: Option<WeatherDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename(deserialize = "weather"))]
+    pub conditions: Option<Vec<WeatherCondition>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wind: Option<WeatherWind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct WeatherCondition {
+    #[serde(rename(deserialize = "main"))]
+    pub condition: String,
+    pub description: String,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct WeatherDetails {
+    pub temp: f32,
+    pub pressure: u32,
+    pub humidity: u32,
+    pub temp_min: f32,
+    pub temp_max: f32,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct WeatherWind {
+    pub speed: f32,
+    #[serde(rename(deserialize = "deg"))]
+    pub degrees: u32,
 }
 
 pub struct APIClient {

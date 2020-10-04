@@ -125,14 +125,11 @@ mod test_api_client {
 
     #[actix_rt::test]
     async fn check_proper_api_response() {
-        // This key will not work, but we can at least get a
-        // reply from the API
-
         let open_weather_env_var = "OPENWEATHER_API_KEY";
 
         let api_key = std::env::var(open_weather_env_var);
 
-        assert!(api_key.is_ok());
+        assert!(api_key.is_ok(), "OpenWeatherMap api key not found in env!");
 
         let api_key = api_key.unwrap();
         let city_id = 2960;

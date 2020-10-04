@@ -53,7 +53,7 @@ where
 
 #[derive(Deserialize, Serialize)]
 pub struct RequestBody {
-    pub city_id: u32,
+    pub city_query: String,
     #[serde(deserialize_with = "deserialize_from_str")]
     #[serde(rename = "units")]
     pub temperature_unit: TemperatureFormat,
@@ -123,18 +123,18 @@ impl<T> CachedElement<T> {
 
 pub struct APPState {
     pub api_client: crate::weather_api::APIClient,
-    pub city_db: Vec<City>,
+    pub city_db: HashMap<(String, String), u32>,
     api_cache: HashMap<(u32, TemperatureFormat), CachedElement<APIResponse>>,
 }
 
 impl APPState {
     pub const CACHE_EXPIRY_MILIS: u128 = 600_000; // 10 minutes
 
-    pub fn build(api_key: String, city_db: Vec<City>) -> Self {
+    pub fn build(api_key: String, city_list: Vec<City>) -> Self {
         Self {
             api_cache: HashMap::new(),
             api_client: crate::weather_api::APIClient::build(api_key),
-            city_db,
+            city_db: APPState::init_hash_table(city_list),
         }
     }
 
@@ -194,6 +194,24 @@ impl APPState {
                 true
             }
             None => false,
+        }
+    }
+
+    fn init_hash_table(city_list: Vec<City>) -> HashMap<(String, String), u32> {
+        city_list
+            .into_iter()
+            .map(|entry| ((entry.name, entry.country), entry.id))
+            .collect()
+    }
+
+    pub fn get_city_id_for_query(&self, city_query: &str) -> Option<u32> {
+        let query_parts = city_query.split(',').collect::<Vec<&str>>();
+
+        if query_parts.len() == 2 {
+            let query_key = (query_parts[0].to_string(), query_parts[1].to_string());
+            self.city_db.get(&query_key).copied()
+        } else {
+            None
         }
     }
 }

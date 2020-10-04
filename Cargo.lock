@@ -2065,9 +2065,11 @@ dependencies = [
  "actix-rt",
  "actix-web",
  "env_logger",
+ "flate2",
  "log",
  "reqwest",
  "serde",
+ "serde_json",
  "serde_with",
 ]
 

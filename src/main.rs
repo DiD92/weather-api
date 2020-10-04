@@ -55,14 +55,16 @@ async fn current_weather_route(
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     if utils::is_app_running_in_prod() {
-        env_logger::from_env(Env::default().default_filter_or("warn")).init();
+        env_logger::from_env(Env::default().default_filter_or("info")).init();
+        log::info!("Starting server in production environment...");
     } else {
         env_logger::from_env(Env::default().default_filter_or("debug")).init();
+        log::info!("Starting server in development environment...");
     }
 
-    match utils::get_api_key() {
-        Some(api_key) => {
-            let app_state = api_models::APPState::build(api_key);
+    match (utils::get_api_key(), utils::load_city_db()) {
+        (Some(api_key), Some(city_db)) => {
+            let app_state = api_models::APPState::build(api_key, city_db);
 
             let data = web::Data::new(Arc::new(Mutex::new(app_state)));
 
@@ -77,8 +79,8 @@ async fn main() -> std::io::Result<()> {
             .run()
             .await
         }
-        None => {
-            log::error!("OpenWeatherMap API key could not be located, shutting down...");
+        (_, _) => {
+            log::error!("Problems during server initialization, shutting down...");
             Ok(())
         }
     }

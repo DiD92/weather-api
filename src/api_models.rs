@@ -6,6 +6,14 @@ use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
 use crate::weather_api::APIResponse;
 
+#[derive(Deserialize, Serialize)]
+pub struct City {
+    pub id: u32,
+    pub name: String,
+    #[serde(rename(deserialize = "ctry"))]
+    pub country: String,
+}
+
 #[derive(Deserialize, Serialize, PartialEq, Eq, Hash, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum TemperatureFormat {
@@ -115,16 +123,18 @@ impl<T> CachedElement<T> {
 
 pub struct APPState {
     pub api_client: crate::weather_api::APIClient,
+    pub city_db: Vec<City>,
     api_cache: HashMap<(u32, TemperatureFormat), CachedElement<APIResponse>>,
 }
 
 impl APPState {
-    pub const CACHE_EXPIRY_MILIS: u128 = 300_000;
+    pub const CACHE_EXPIRY_MILIS: u128 = 600_000; // 10 minutes
 
-    pub fn build(api_key: String) -> Self {
+    pub fn build(api_key: String, city_db: Vec<City>) -> Self {
         Self {
             api_cache: HashMap::new(),
             api_client: crate::weather_api::APIClient::build(api_key),
+            city_db,
         }
     }
 
@@ -219,7 +229,7 @@ mod test_app_state {
 
     #[test]
     fn check_cache_storage() {
-        let mut app_state = APPState::build("11".into());
+        let mut app_state = APPState::build("11".into(), vec![]);
 
         let cache_key = (1, TemperatureFormat::Metric);
 

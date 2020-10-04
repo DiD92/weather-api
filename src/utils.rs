@@ -1,4 +1,3 @@
-
 pub const APP_DEVELOPMENT_FLAG: &str = "WEATHER_API_SERVER_DEV";
 
 pub fn is_app_running_in_prod() -> bool {

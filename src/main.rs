@@ -4,8 +4,8 @@ use env_logger::Env;
 use std::sync::{Arc, Mutex};
 
 mod api_models;
-mod weather_api;
 mod utils;
+mod weather_api;
 
 #[get("/weather")]
 async fn current_weather_route(
@@ -16,8 +16,8 @@ async fn current_weather_route(
 
     let query_tuple = (body.city_id, body.temperature_unit);
 
-    if app_state.has_valid_cache_for(query_tuple) {
-        let cached_response = app_state.get_cache_for(query_tuple).unwrap();
+    if app_state.has_valid_cache_for(&query_tuple) {
+        let cached_response = app_state.get_cache_for(&query_tuple).unwrap();
         HttpResponse::Ok().json(api_models::RequestResponse::build_success(
             cached_response.to_owned(),
         ))
@@ -54,19 +54,18 @@ async fn current_weather_route(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-
     if utils::is_app_running_in_prod() {
         env_logger::from_env(Env::default().default_filter_or("warn")).init();
     } else {
         env_logger::from_env(Env::default().default_filter_or("debug")).init();
     }
-    
+
     match utils::get_api_key() {
         Some(api_key) => {
             let app_state = api_models::APPState::build(api_key);
-        
+
             let data = web::Data::new(Arc::new(Mutex::new(app_state)));
-        
+
             HttpServer::new(move || {
                 App::new()
                     .wrap(Logger::default())
@@ -77,7 +76,7 @@ async fn main() -> std::io::Result<()> {
             .bind("localhost:8080")?
             .run()
             .await
-        },
+        }
         None => {
             log::error!("OpenWeatherMap API key could not be located, shutting down...");
             Ok(())

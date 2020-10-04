@@ -1,11 +1,30 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
 use crate::weather_api::APIResponse;
 
-fn deserialize_from_str<'de, D>(deserializer: D) -> Result<char, D::Error>
+#[derive(Deserialize, Serialize, PartialEq, Eq, Hash, Copy, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum TemperatureFormat {
+    Metric,
+    Imperial,
+    Standard,
+}
+
+impl Display for TemperatureFormat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            TemperatureFormat::Metric => write!(f, "metric"),
+            TemperatureFormat::Imperial => write!(f, "imperial"),
+            TemperatureFormat::Standard => write!(f, "standard"),
+        }
+    }
+}
+
+fn deserialize_from_str<'de, D>(deserializer: D) -> Result<TemperatureFormat, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -14,8 +33,9 @@ where
     s.make_ascii_lowercase();
 
     match s.as_ref() {
-        "f" | "fahrenheit" => Ok('f'),
-        "c" | "celsius" => Ok('c'),
+        "f" | "fahrenheit" => Ok(TemperatureFormat::Imperial),
+        "c" | "celsius" => Ok(TemperatureFormat::Metric),
+        "k" | "kelvin" => Ok(TemperatureFormat::Standard),
         &_ => {
             log::warn!("Invalid temperature parameter supplied - {}", s);
             Err(Error::custom("Invalid temperature parameter."))
@@ -28,7 +48,7 @@ pub struct RequestBody {
     pub city_id: u32,
     #[serde(deserialize_with = "deserialize_from_str")]
     #[serde(rename = "units")]
-    pub temperature_unit: char,
+    pub temperature_unit: TemperatureFormat,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -95,7 +115,7 @@ impl<T> CachedElement<T> {
 
 pub struct APPState {
     pub api_client: crate::weather_api::APIClient,
-    api_cache: HashMap<(u32, char), CachedElement<APIResponse>>,
+    api_cache: HashMap<(u32, TemperatureFormat), CachedElement<APIResponse>>,
 }
 
 impl APPState {
@@ -111,11 +131,11 @@ impl APPState {
     pub fn cache_response(
         &mut self,
         response: APIResponse,
-        temperature_unit_used: char,
+        temperature_unit_used: TemperatureFormat,
     ) -> Result<(), String> {
         match response.id {
             Some(city_id) => {
-                if !self.check_and_clear_cache((city_id, temperature_unit_used)) {
+                if !self.check_and_clear_cache(&(city_id, temperature_unit_used)) {
                     log::debug!("Generating cache for api response - {}", city_id);
 
                     let cache = CachedElement::new(response, APPState::CACHE_EXPIRY_MILIS);
@@ -138,23 +158,23 @@ impl APPState {
         }
     }
 
-    pub fn get_cache_for(&mut self, cache_key: (u32, char)) -> Option<&APIResponse> {
+    pub fn get_cache_for(&mut self, cache_key: &(u32, TemperatureFormat)) -> Option<&APIResponse> {
         if self.check_and_clear_cache(cache_key) {
-            return Some(&self.api_cache.get(&cache_key).unwrap().element);
+            return Some(&self.api_cache.get(cache_key).unwrap().element);
         }
 
         None
     }
 
-    pub fn has_valid_cache_for(&self, cache_key: (u32, char)) -> bool {
-        match self.api_cache.get(&cache_key) {
+    pub fn has_valid_cache_for(&self, cache_key: &(u32, TemperatureFormat)) -> bool {
+        match self.api_cache.get(cache_key) {
             Some(cache) => !cache.has_expired(),
             None => false,
         }
     }
 
-    fn check_and_clear_cache(&mut self, cache_key: (u32, char)) -> bool {
-        match self.api_cache.get(&cache_key) {
+    fn check_and_clear_cache(&mut self, cache_key: &(u32, TemperatureFormat)) -> bool {
+        match self.api_cache.get(cache_key) {
             Some(cache) => {
                 if cache.has_expired() {
                     self.api_cache.remove(&cache_key);
@@ -201,7 +221,7 @@ mod test_app_state {
     fn check_cache_storage() {
         let mut app_state = APPState::build("11".into());
 
-        let cache_key = (1, 'C');
+        let cache_key = (1, TemperatureFormat::Metric);
 
         let api_response = APIResponse {
             cod: 200,
@@ -209,10 +229,10 @@ mod test_app_state {
             message: None,
         };
 
-        assert!(!app_state.has_valid_cache_for(cache_key));
+        assert!(!app_state.has_valid_cache_for(&cache_key));
 
         assert_eq!(app_state.cache_response(api_response, cache_key.1), Ok(()));
 
-        assert!(app_state.has_valid_cache_for(cache_key));
+        assert!(app_state.has_valid_cache_for(&cache_key));
     }
 }

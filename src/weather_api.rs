@@ -80,7 +80,7 @@ impl APIClient {
     pub async fn query(
         &self,
         city_id: u32,
-        temperature_units: char,
+        temperature_units: crate::api_models::TemperatureFormat,
     ) -> Result<APIResponse, reqwest::Error> {
         let query_params = &[
             ("appid", &self.api_key),
@@ -114,7 +114,7 @@ mod test_api_client {
         let dummy_key = "aa";
 
         let city_id = 2960;
-        let temperature_fmt = 'C';
+        let temperature_fmt = crate::api_models::TemperatureFormat::Metric;
 
         let client = APIClient::build(dummy_key.to_owned());
 
@@ -133,7 +133,7 @@ mod test_api_client {
 
         let api_key = api_key.unwrap();
         let city_id = 2960;
-        let temperature_fmt = 'C';
+        let temperature_fmt = crate::api_models::TemperatureFormat::Metric;
 
         let client = APIClient::build(api_key.to_owned());
 

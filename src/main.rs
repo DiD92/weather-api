@@ -80,7 +80,7 @@ async fn main() -> std::io::Result<()> {
             .await
         }
         (_, _) => {
-            log::error!("Problems during server initialization, shutting down...");
+            log::error!("Errors found during server initialization, shutting down...");
             Ok(())
         }
     }

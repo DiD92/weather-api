@@ -12,7 +12,7 @@ pub fn get_api_key() -> Option<String> {
     match std::env::var(API_KEY_ENV_VAR) {
         Ok(api_key) => Some(api_key),
         Err(err) => {
-            log::error!("{}", format!("api key could not be loaded - {}", err));
+            log::error!("api key could not be loaded - {}", err);
             None
         }
     }
@@ -38,47 +38,39 @@ pub fn load_city_db() -> Option<Vec<crate::api_models::City>> {
                                 Ok(city_list) => {
                                     log::info!(
                                         "{} entries loaded from cities database",
-                                        &city_list.len()
+                                        city_list.len()
                                     );
                                     Some(city_list)
                                 }
                                 Err(err) => {
-                                    log::error!(
-                                        "{}",
-                                        format!("Error parsing database file - {}", err)
-                                    );
+                                    log::error!("Error parsing database file - {}", err);
                                     None
                                 }
                             }
                         }
                         Err(err) => {
-                            log::error!("{}", format!("Error reading database file - {}", err));
+                            log::error!("Error reading database file - {}", err);
                             None
                         }
                     }
                 } else {
                     log::error!(
-                        "{}",
-                        format!(
-                            "{} could not be found in {} is not a valid directory!",
-                            CITY_DB_FILENAME, CITY_DB_ENV_VAR
-                        )
+                        "{} could not be found in {} is not a valid directory!",
+                        CITY_DB_FILENAME,
+                        CITY_DB_ENV_VAR
                     );
                     None
                 }
             } else {
                 log::error!(
-                    "{}",
-                    format!(
-                        "The path pointed by {} is not a valid directory!",
-                        CITY_DB_ENV_VAR
-                    )
+                    "The path pointed by {} is not a valid directory!",
+                    CITY_DB_ENV_VAR
                 );
                 None
             }
         }
         Err(err) => {
-            log::error!("{}", format!("city database could not be loaded - {}", err));
+            log::error!("city database could not be loaded - {}", err);
             None
         }
     }

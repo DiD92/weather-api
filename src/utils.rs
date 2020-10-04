@@ -1,8 +1,4 @@
-use std::fs::File;
-use std::io::BufReader;
 use std::path::PathBuf;
-
-use flate2::bufread::GzDecoder;
 
 pub const APP_DEVELOPMENT_FLAG: &str = "WEATHER_API_SERVER_DEV";
 
@@ -24,7 +20,7 @@ pub fn get_api_key() -> Option<String> {
 
 pub const CITY_DB_ENV_VAR: &str = "CITY_DATABASE_PATH";
 
-pub const CITY_DB_FILENAME: &str = "cities_db.json.gz";
+pub const CITY_DB_FILENAME: &str = "cities_db.json";
 
 pub fn load_city_db() -> Option<Vec<crate::api_models::City>> {
     match std::env::var(CITY_DB_ENV_VAR) {
@@ -35,11 +31,9 @@ pub fn load_city_db() -> Option<Vec<crate::api_models::City>> {
                 file_path.push(CITY_DB_FILENAME);
 
                 if file_path.is_file() {
-                    match File::open(file_path) {
-                        Ok(file) => {
-                            let reader = GzDecoder::new(BufReader::new(file));
-
-                            match serde_json::from_reader::<_, Vec<crate::api_models::City>>(reader)
+                    match std::fs::read_to_string(file_path) {
+                        Ok(str_content) => {
+                            match serde_json::from_str::<Vec<crate::api_models::City>>(&str_content)
                             {
                                 Ok(city_list) => {
                                     log::info!(
@@ -58,7 +52,7 @@ pub fn load_city_db() -> Option<Vec<crate::api_models::City>> {
                             }
                         }
                         Err(err) => {
-                            log::error!("{}", format!("Error opening database file - {}", err));
+                            log::error!("{}", format!("Error reading database file - {}", err));
                             None
                         }
                     }

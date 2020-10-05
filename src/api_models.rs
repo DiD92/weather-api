@@ -16,7 +16,7 @@ pub struct City {
     pub country: String,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Eq, Hash, Copy, Clone)]
+#[derive(Deserialize, Serialize, PartialEq, Eq, Hash, Copy, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum TemperatureFormat {
     Metric,
@@ -123,10 +123,48 @@ impl<T> CachedElement<T> {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct CityEntry {
+    pub city_id: u32,
+    pub city_lat: f32,
+    pub city_lon: f32,
+}
+
+impl CityEntry {
+    pub fn from(city_id: u32, city_lat: f32, city_lon: f32) -> Self {
+        CityEntry {
+            city_id,
+            city_lat,
+            city_lon,
+        }
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Debug, Copy, Clone)]
+pub struct CacheKey {
+    pub city_id: u32,
+    pub temperature_fmt: TemperatureFormat,
+    pub req_type: crate::RequestType,
+}
+
+impl CacheKey {
+    pub fn from(
+        city_id: u32,
+        temperature_fmt: TemperatureFormat,
+        req_type: crate::RequestType,
+    ) -> Self {
+        CacheKey {
+            city_id,
+            temperature_fmt,
+            req_type,
+        }
+    }
+}
+
 pub struct APPState {
     pub api_client: crate::weather_api::APIClient,
-    pub city_db: HashMap<(String, String), (u32, f32, f32)>,
-    api_cache: HashMap<(u32, TemperatureFormat), CachedElement<APIResponse>>,
+    pub city_db: HashMap<(String, String), CityEntry>,
+    api_cache: HashMap<CacheKey, CachedElement<APIResponse>>,
 }
 
 impl APPState {
@@ -142,26 +180,23 @@ impl APPState {
 
     pub fn cache_response(
         &mut self,
-        city_id: u32,
+        cache_key: CacheKey,
         response: APIResponse,
-        temperature_unit_used: TemperatureFormat,
     ) -> Result<(), String> {
         if response.current.is_some() || response.hourly.is_some() {
-            if !self.check_and_clear_cache(&(city_id, temperature_unit_used)) {
-                log::debug!("Generating cache for api response - {}", city_id);
+            if !self.check_and_clear_cache(&cache_key) {
+                log::debug!("Generating cache for api response - {}", &cache_key.city_id);
 
                 let cache = CachedElement::new(response, APPState::CACHE_EXPIRY_MILIS);
 
-                let _ = self
-                    .api_cache
-                    .insert((city_id, temperature_unit_used), cache);
+                let _ = self.api_cache.insert(cache_key, cache);
 
                 return Ok(());
             }
 
             log::warn!(
                 "Tried to cache already cached api response for id - {}",
-                city_id
+                &cache_key.city_id
             );
 
             Err("APIResponse is already cached!".into())
@@ -170,7 +205,7 @@ impl APPState {
         }
     }
 
-    pub fn get_cache_for(&mut self, cache_key: &(u32, TemperatureFormat)) -> Option<&APIResponse> {
+    pub fn get_cache_for(&mut self, cache_key: &CacheKey) -> Option<&APIResponse> {
         if self.check_and_clear_cache(cache_key) {
             return Some(&self.api_cache.get(cache_key).unwrap().element);
         }
@@ -178,14 +213,14 @@ impl APPState {
         None
     }
 
-    pub fn has_valid_cache_for(&self, cache_key: &(u32, TemperatureFormat)) -> bool {
+    pub fn has_valid_cache_for(&self, cache_key: &CacheKey) -> bool {
         match self.api_cache.get(cache_key) {
             Some(cache) => !cache.has_expired(),
             None => false,
         }
     }
 
-    fn check_and_clear_cache(&mut self, cache_key: &(u32, TemperatureFormat)) -> bool {
+    fn check_and_clear_cache(&mut self, cache_key: &CacheKey) -> bool {
         match self.api_cache.get(cache_key) {
             Some(cache) => {
                 if cache.has_expired() {
@@ -199,19 +234,19 @@ impl APPState {
         }
     }
 
-    fn init_hash_table(city_list: Vec<City>) -> HashMap<(String, String), (u32, f32, f32)> {
+    fn init_hash_table(city_list: Vec<City>) -> HashMap<(String, String), CityEntry> {
         city_list
             .into_iter()
             .map(|entry| {
                 (
                     (entry.name, entry.country),
-                    (entry.id, entry.lat, entry.lon),
+                    CityEntry::from(entry.id, entry.lat, entry.lon),
                 )
             })
             .collect()
     }
 
-    pub fn get_city_keys_for_query(&self, city_query: &str) -> Option<(u32, f32, f32)> {
+    pub fn get_city_keys_for_query(&self, city_query: &str) -> Option<CityEntry> {
         let query_parts = city_query.split(',').collect::<Vec<&str>>();
 
         if query_parts.len() == 2 {
@@ -256,7 +291,11 @@ mod test_app_state {
     fn check_cache_storage() {
         let mut app_state = APPState::build("11".into(), vec![]);
 
-        let cache_key = (1, TemperatureFormat::Metric);
+        let cache_key = CacheKey::from(
+            1,
+            TemperatureFormat::Metric,
+            crate::RequestType::CurrentWeather,
+        );
 
         let api_response = APIResponse {
             lat: None,
@@ -269,9 +308,7 @@ mod test_app_state {
 
         assert!(!app_state.has_valid_cache_for(&cache_key));
 
-        assert!(app_state
-            .cache_response(cache_key.0, api_response, cache_key.1)
-            .is_err());
+        assert!(app_state.cache_response(cache_key, api_response).is_err());
 
         assert!(!app_state.has_valid_cache_for(&cache_key));
 
@@ -299,9 +336,7 @@ mod test_app_state {
             hourly: None,
         };
 
-        assert!(app_state
-            .cache_response(cache_key.0, api_response, cache_key.1)
-            .is_ok());
+        assert!(app_state.cache_response(cache_key, api_response).is_ok());
 
         assert!(app_state.has_valid_cache_for(&cache_key));
     }

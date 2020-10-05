@@ -7,69 +7,35 @@ mod api_models;
 mod utils;
 mod weather_api;
 
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
+pub enum RequestType {
+    CurrentWeather,
+    WeatherForecast,
+}
+
+type SharedState = web::Data<Arc<Mutex<api_models::APPState>>>;
+type InboundRequest = web::Json<api_models::RequestBody>;
+
 #[get("/weather")]
-async fn current_weather_route(
-    data: web::Data<Arc<Mutex<api_models::APPState>>>,
-    body: web::Json<api_models::RequestBody>,
-) -> impl Responder {
-    let mut app_state = data.lock().unwrap();
-
-    if let Some(city_keys) = app_state.get_city_keys_for_query(&body.city_query) {
-        let cache_key = (city_keys.0, body.temperature_unit);
-
-        if app_state.has_valid_cache_for(&cache_key) {
-            let cached_response = app_state.get_cache_for(&cache_key).unwrap();
-            HttpResponse::Ok().json(api_models::RequestResponse::build_success(
-                cached_response.to_owned(),
-            ))
-        } else {
-            match app_state
-                .api_client
-                .query_current_weather(city_keys.1, city_keys.2, cache_key.1)
-                .await
-            {
-                Ok(response) => {
-                    if response.cod.is_some() && response.cod.unwrap() != 200 {
-                        HttpResponse::Ok().json(api_models::RequestResponse::build_failure(
-                            response.message.unwrap(),
-                        ))
-                    } else {
-                        if let Err(msg) =
-                            app_state.cache_response(city_keys.0, response.clone(), cache_key.1)
-                        {
-                            log::warn!(
-                                "Failed to created cache for ({}|{}) - {}",
-                                cache_key.0,
-                                cache_key.1,
-                                msg
-                            );
-                        }
-
-                        HttpResponse::Ok()
-                            .json(api_models::RequestResponse::build_success(response))
-                    }
-                }
-                Err(err) => HttpResponse::Ok()
-                    .json(api_models::RequestResponse::build_failure(err.to_string())),
-            }
-        }
-    } else {
-        HttpResponse::Ok().json(api_models::RequestResponse::build_failure(format!(
-            "No valid city_id found for query {}",
-            &body.city_query
-        )))
-    }
+async fn current_weather_route(data: SharedState, body: InboundRequest) -> impl Responder {
+    process_route(data, body, RequestType::CurrentWeather).await
 }
 
 #[get("/forecast")]
-async fn weather_forecast_route(
-    data: web::Data<Arc<Mutex<api_models::APPState>>>,
-    body: web::Json<api_models::RequestBody>,
+async fn weather_forecast_route(data: SharedState, body: InboundRequest) -> impl Responder {
+    process_route(data, body, RequestType::WeatherForecast).await
+}
+
+async fn process_route(
+    data: SharedState,
+    body: InboundRequest,
+    request_type: RequestType,
 ) -> impl Responder {
     let mut app_state = data.lock().unwrap();
 
     if let Some(city_keys) = app_state.get_city_keys_for_query(&body.city_query) {
-        let cache_key = (city_keys.0, body.temperature_unit);
+        let cache_key =
+            api_models::CacheKey::from(city_keys.city_id, body.temperature_unit, request_type);
 
         if app_state.has_valid_cache_for(&cache_key) {
             let cached_response = app_state.get_cache_for(&cache_key).unwrap();
@@ -77,24 +43,44 @@ async fn weather_forecast_route(
                 cached_response.to_owned(),
             ))
         } else {
-            match app_state
-                .api_client
-                .query_forecast_weather(city_keys.1, city_keys.2, cache_key.1)
-                .await
-            {
+            let api_result: Result<weather_api::APIResponse, reqwest::Error>;
+
+            match request_type {
+                RequestType::CurrentWeather => {
+                    api_result = app_state
+                        .api_client
+                        .query_current_weather(
+                            city_keys.city_lat,
+                            city_keys.city_lon,
+                            body.temperature_unit,
+                        )
+                        .await;
+                }
+                RequestType::WeatherForecast => {
+                    api_result = app_state
+                        .api_client
+                        .query_forecast_weather(
+                            city_keys.city_lat,
+                            city_keys.city_lon,
+                            body.temperature_unit,
+                        )
+                        .await;
+                }
+            }
+
+            match api_result {
                 Ok(response) => {
                     if response.cod.is_some() && response.cod.unwrap() != 200 {
                         HttpResponse::Ok().json(api_models::RequestResponse::build_failure(
                             response.message.unwrap(),
                         ))
                     } else {
-                        if let Err(msg) =
-                            app_state.cache_response(city_keys.0, response.clone(), cache_key.1)
-                        {
+                        if let Err(msg) = app_state.cache_response(cache_key, response.clone()) {
                             log::warn!(
-                                "Failed to created cache for ({}|{}) - {}",
-                                cache_key.0,
-                                cache_key.1,
+                                "Failed to created cache for ({}|{:?}|{:?}) - {}",
+                                cache_key.city_id,
+                                cache_key.temperature_fmt,
+                                cache_key.req_type,
                                 msg
                             );
                         }
@@ -129,7 +115,7 @@ async fn main() -> std::io::Result<()> {
         (Some(api_key), Some(city_db)) => {
             let app_state = api_models::APPState::build(api_key, city_db);
 
-            let data = web::Data::new(Arc::new(Mutex::new(app_state)));
+            let data: SharedState = web::Data::new(Arc::new(Mutex::new(app_state)));
 
             HttpServer::new(move || {
                 App::new()

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-pub const APP_DEVELOPMENT_FLAG: &str = "WEATHER_API_SERVER_DEV";
+pub const APP_DEVELOPMENT_FLAG: &str = "WEATHER_API_SERVER_PROD";
 
 pub fn is_app_running_in_prod() -> bool {
     std::env::var(APP_DEVELOPMENT_FLAG).is_ok()

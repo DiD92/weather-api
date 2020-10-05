@@ -20,6 +20,11 @@ As you can see the query has two parameters.
 The first parameter is the `city_query` that consists of a city name that begins with a capitalized city name, followed by an `,` 
 character and an **ISO 3166-1 alfa-2** country code.
 
+The second paramater is the `units` parameter, which helps indicate the temperature and other weather units, the valid values are the following:
+- "C": "Metric units"
+- "F": "Imperial units"
+- "K": "Standard units, (temperature in Kelvin)"
+
 ## Running the project
 
 You need to set up to environment variables before running the project:

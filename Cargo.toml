@@ -1,6 +1,6 @@
 [package]
 name = "weather-retrieve"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Dídac Sementé Fernández <didac.semente@gmail.com>"]
 edition = "2018"
 

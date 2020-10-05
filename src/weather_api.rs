@@ -1,75 +1,39 @@
-use serde::{de::Error, de::Visitor, Deserialize, Deserializer, Serialize};
-
-fn deserialize_response_code<'de, D>(deserializer: D) -> Result<u32, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct CodeVisitor;
-
-    impl<'de> Visitor<'de> for CodeVisitor {
-        type Value = u32;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(formatter, "status code either in string or u32 format")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            match value.parse::<u32>() {
-                Ok(num) => Ok(num),
-                Err(_) => Err(E::custom(format!("Invalid status code - {}", value))),
-            }
-        }
-
-        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            match value.parse::<u32>() {
-                Ok(num) => Ok(num),
-                Err(_) => Err(E::custom(format!("Invalid status code - {}", value))),
-            }
-        }
-
-        fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            Ok(value)
-        }
-
-        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            Ok(value as u32)
-        }
-    }
-
-    deserializer.deserialize_any(CodeVisitor)
-}
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct APIResponse {
-    #[serde(skip_serializing)]
-    #[serde(deserialize_with = "deserialize_response_code")]
-    pub cod: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<u32>,
+    pub lat: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
+    pub lon: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename(deserialize = "main"))]
-    pub details: Option<WeatherDetails>,
+    pub cod: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current: Option<WeatherCurrent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hourly: Option<Vec<WeatherHourly>>,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct WeatherCurrent {
+    pub dt: u32,
+    pub sunrise: u32,
+    pub sunset: u32,
+    pub temp: f32,
+    pub feels_like: f32,
+    pub pressure: u32,
+    pub humidity: u32,
+    pub dew_point: f32,
+    pub uvi: f32,
+    pub clouds: u32,
+    pub visibility: u32,
+    pub wind_speed: f32,
+    pub wind_deg: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename(deserialize = "weather"))]
     pub conditions: Option<Vec<WeatherCondition>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub wind: Option<WeatherWind>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -80,19 +44,21 @@ pub struct WeatherCondition {
 }
 
 #[derive(Deserialize, Serialize, Clone)]
-pub struct WeatherDetails {
+pub struct WeatherHourly {
+    pub dt: u32,
     pub temp: f32,
+    pub feels_like: f32,
     pub pressure: u32,
     pub humidity: u32,
-    pub temp_min: f32,
-    pub temp_max: f32,
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-pub struct WeatherWind {
-    pub speed: f32,
-    #[serde(rename(deserialize = "deg"))]
-    pub degrees: u32,
+    pub dew_point: f32,
+    pub clouds: u32,
+    pub visibility: u32,
+    pub wind_speed: f32,
+    pub wind_deg: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename(deserialize = "weather"))]
+    pub conditions: Option<Vec<WeatherCondition>>,
+    pub pop: f32,
 }
 
 pub struct APIClient {
@@ -101,7 +67,7 @@ pub struct APIClient {
 }
 
 impl APIClient {
-    pub const BASE_API_URL: &'static str = "https://api.openweathermap.org/data/2.5/weather?";
+    pub const BASE_API_URL: &'static str = "https://api.openweathermap.org/data/2.5/onecall??";
 
     pub fn build(api_key: String) -> Self {
         APIClient {
@@ -110,18 +76,66 @@ impl APIClient {
         }
     }
 
-    pub async fn query(
+    const CURRENT_WEATHER_EXCLUDE: &'static str = "minutely,hourly,daily,alerts";
+
+    pub async fn query_current_weather(
         &self,
-        city_id: u32,
+        city_lat: f32,
+        city_lon: f32,
         temperature_units: crate::api_models::TemperatureFormat,
+    ) -> Result<APIResponse, reqwest::Error> {
+        log::debug!(
+            "Querying OpenWeatherMap API for coords - ({},{})",
+            city_lat,
+            city_lon
+        );
+
+        self.perform_query(
+            city_lat,
+            city_lon,
+            temperature_units,
+            &APIClient::CURRENT_WEATHER_EXCLUDE,
+        )
+        .await
+    }
+
+    const FORECAST_WEATHER_EXCLUDE: &'static str = "current,minutely,daily,alerts";
+
+    pub async fn query_forecast_weather(
+        &self,
+        city_lat: f32,
+        city_lon: f32,
+        temperature_units: crate::api_models::TemperatureFormat,
+    ) -> Result<APIResponse, reqwest::Error> {
+        log::debug!(
+            "Querying OpenWeatherMap API for coords - ({},{})",
+            city_lat,
+            city_lon
+        );
+
+        self.perform_query(
+            city_lat,
+            city_lon,
+            temperature_units,
+            &APIClient::FORECAST_WEATHER_EXCLUDE,
+        )
+        .await
+    }
+
+    async fn perform_query(
+        &self,
+        city_lat: f32,
+        city_lon: f32,
+        temperature_units: crate::api_models::TemperatureFormat,
+        exclude_set: &str,
     ) -> Result<APIResponse, reqwest::Error> {
         let query_params = &[
             ("appid", &self.api_key),
-            ("id", &city_id.to_string()),
+            ("lat", &city_lat.to_string()),
+            ("lon", &city_lon.to_string()),
+            ("exclude", &exclude_set.to_owned()),
             ("units", &temperature_units.to_string()),
         ];
-
-        log::debug!("Querying OpenWeatherMap API for city id - {}", city_id);
 
         let api_request = self
             .client
@@ -146,12 +160,14 @@ mod test_api_client {
         // reply from the API
         let dummy_key = "aa";
 
-        let city_id = 2960;
+        let city_coords: (f32, f32) = (1.0, 1.0);
         let temperature_fmt = crate::api_models::TemperatureFormat::Metric;
 
         let client = APIClient::build(dummy_key.to_owned());
 
-        let query_result = client.query(city_id, temperature_fmt).await;
+        let query_result = client
+            .query_current_weather(city_coords.0, city_coords.1, temperature_fmt)
+            .await;
 
         assert!(query_result.is_ok());
     }
@@ -165,18 +181,19 @@ mod test_api_client {
         assert!(api_key.is_ok(), "OpenWeatherMap api key not found in env!");
 
         let api_key = api_key.unwrap();
-        let city_id = 2960;
+        let city_coords: (f32, f32) = (34.940079, 36.321911); // Coords for city_id 2960
         let temperature_fmt = crate::api_models::TemperatureFormat::Metric;
 
         let client = APIClient::build(api_key.to_owned());
 
-        let query_result = client.query(city_id, temperature_fmt).await;
+        let query_result = client
+            .query_current_weather(city_coords.0, city_coords.1, temperature_fmt)
+            .await;
 
         assert!(query_result.is_ok());
 
         let api_response = query_result.unwrap();
 
-        assert_eq!(api_response.cod, 200);
-        assert_eq!(api_response.id.unwrap(), city_id);
+        assert!(api_response.current.is_some());
     }
 }

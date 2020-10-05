@@ -14,37 +14,40 @@ async fn current_weather_route(
 ) -> impl Responder {
     let mut app_state = data.lock().unwrap();
 
-    if let Some(city_id) = app_state.get_city_id_for_query(&body.city_query) {
-        let query_tuple = (city_id, body.temperature_unit);
+    if let Some(city_keys) = app_state.get_city_keys_for_query(&body.city_query) {
+        let cache_key = (city_keys.0, body.temperature_unit);
 
-        if app_state.has_valid_cache_for(&query_tuple) {
-            let cached_response = app_state.get_cache_for(&query_tuple).unwrap();
+        if app_state.has_valid_cache_for(&cache_key) {
+            let cached_response = app_state.get_cache_for(&cache_key).unwrap();
             HttpResponse::Ok().json(api_models::RequestResponse::build_success(
                 cached_response.to_owned(),
             ))
         } else {
             match app_state
                 .api_client
-                .query(query_tuple.0, query_tuple.1)
+                .query_current_weather(city_keys.1, city_keys.2, cache_key.1)
                 .await
             {
                 Ok(response) => {
-                    if response.cod != 200 {
-                        return HttpResponse::Ok().json(
-                            api_models::RequestResponse::build_failure(response.message.unwrap()),
-                        );
-                    }
+                    if response.cod.is_some() && response.cod.unwrap() != 200 {
+                        HttpResponse::Ok().json(api_models::RequestResponse::build_failure(
+                            response.message.unwrap(),
+                        ))
+                    } else {
+                        if let Err(msg) =
+                            app_state.cache_response(city_keys.0, response.clone(), cache_key.1)
+                        {
+                            log::warn!(
+                                "Failed to created cache for ({}|{}) - {}",
+                                cache_key.0,
+                                cache_key.1,
+                                msg
+                            );
+                        }
 
-                    if let Err(msg) = app_state.cache_response(response.clone(), query_tuple.1) {
-                        log::warn!(
-                            "Failed to created cache for ({}|{}) - {}",
-                            query_tuple.0,
-                            query_tuple.1,
-                            msg
-                        );
+                        HttpResponse::Ok()
+                            .json(api_models::RequestResponse::build_success(response))
                     }
-
-                    HttpResponse::Ok().json(api_models::RequestResponse::build_success(response))
                 }
                 Err(err) => HttpResponse::Ok()
                     .json(api_models::RequestResponse::build_failure(err.to_string())),

@@ -9,6 +9,8 @@ use crate::weather_api::APIResponse;
 #[derive(Deserialize, Serialize)]
 pub struct City {
     pub id: u32,
+    pub lat: f32,
+    pub lon: f32,
     pub name: String,
     #[serde(rename(deserialize = "ctry"))]
     pub country: String,
@@ -123,7 +125,7 @@ impl<T> CachedElement<T> {
 
 pub struct APPState {
     pub api_client: crate::weather_api::APIClient,
-    pub city_db: HashMap<(String, String), u32>,
+    pub city_db: HashMap<(String, String), (u32, f32, f32)>,
     api_cache: HashMap<(u32, TemperatureFormat), CachedElement<APIResponse>>,
 }
 
@@ -140,31 +142,31 @@ impl APPState {
 
     pub fn cache_response(
         &mut self,
+        city_id: u32,
         response: APIResponse,
         temperature_unit_used: TemperatureFormat,
     ) -> Result<(), String> {
-        match response.id {
-            Some(city_id) => {
-                if !self.check_and_clear_cache(&(city_id, temperature_unit_used)) {
-                    log::debug!("Generating cache for api response - {}", city_id);
+        if response.current.is_some() || response.hourly.is_some() {
+            if !self.check_and_clear_cache(&(city_id, temperature_unit_used)) {
+                log::debug!("Generating cache for api response - {}", city_id);
 
-                    let cache = CachedElement::new(response, APPState::CACHE_EXPIRY_MILIS);
+                let cache = CachedElement::new(response, APPState::CACHE_EXPIRY_MILIS);
 
-                    let _ = self
-                        .api_cache
-                        .insert((city_id, temperature_unit_used), cache);
+                let _ = self
+                    .api_cache
+                    .insert((city_id, temperature_unit_used), cache);
 
-                    return Ok(());
-                }
-
-                log::warn!(
-                    "Tried to cache already cached api response for id - {}",
-                    city_id
-                );
-
-                Err("APIResponse is already cached!".into())
+                return Ok(());
             }
-            None => Err("APIResponse doesn't contain identifier!".into()),
+
+            log::warn!(
+                "Tried to cache already cached api response for id - {}",
+                city_id
+            );
+
+            Err("APIResponse is already cached!".into())
+        } else {
+            Err("APIResponse doesn't contain valid data!".into())
         }
     }
 
@@ -197,14 +199,19 @@ impl APPState {
         }
     }
 
-    fn init_hash_table(city_list: Vec<City>) -> HashMap<(String, String), u32> {
+    fn init_hash_table(city_list: Vec<City>) -> HashMap<(String, String), (u32, f32, f32)> {
         city_list
             .into_iter()
-            .map(|entry| ((entry.name, entry.country), entry.id))
+            .map(|entry| {
+                (
+                    (entry.name, entry.country),
+                    (entry.id, entry.lat, entry.lon),
+                )
+            })
             .collect()
     }
 
-    pub fn get_city_id_for_query(&self, city_query: &str) -> Option<u32> {
+    pub fn get_city_keys_for_query(&self, city_query: &str) -> Option<(u32, f32, f32)> {
         let query_parts = city_query.split(',').collect::<Vec<&str>>();
 
         if query_parts.len() == 2 {
@@ -252,18 +259,49 @@ mod test_app_state {
         let cache_key = (1, TemperatureFormat::Metric);
 
         let api_response = APIResponse {
-            cod: 200,
-            id: Some(cache_key.0),
-            name: None,
+            lat: None,
+            lon: None,
+            cod: None,
             message: None,
-            conditions: None,
-            details: None,
-            wind: None,
+            current: None,
+            hourly: None,
         };
 
         assert!(!app_state.has_valid_cache_for(&cache_key));
 
-        assert_eq!(app_state.cache_response(api_response, cache_key.1), Ok(()));
+        assert!(app_state
+            .cache_response(cache_key.0, api_response, cache_key.1)
+            .is_err());
+
+        assert!(!app_state.has_valid_cache_for(&cache_key));
+
+        let api_response = APIResponse {
+            lat: None,
+            lon: None,
+            cod: None,
+            message: None,
+            current: Some(crate::weather_api::WeatherCurrent {
+                dt: 1,
+                sunrise: 1,
+                sunset: 1,
+                temp: 0.0,
+                feels_like: 0.0,
+                pressure: 1,
+                humidity: 1,
+                dew_point: 0.0,
+                uvi: 0.0,
+                clouds: 1,
+                visibility: 1,
+                wind_speed: 0.0,
+                wind_deg: 1,
+                conditions: None,
+            }),
+            hourly: None,
+        };
+
+        assert!(app_state
+            .cache_response(cache_key.0, api_response, cache_key.1)
+            .is_ok());
 
         assert!(app_state.has_valid_cache_for(&cache_key));
     }

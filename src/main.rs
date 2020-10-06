@@ -1,5 +1,4 @@
-use actix_web::{get, App, HttpResponse, HttpServer, Responder};
-use actix_web::{middleware::Logger, web};
+use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use env_logger::Env;
 use std::sync::{Arc, Mutex};
 
@@ -10,7 +9,7 @@ mod weather_api;
 
 use crate::models::{api::APIResponse, request::*, state::CacheKey};
 
-type SharedState = web::Data<Arc<Mutex<app_state::APPState>>>;
+type SharedState = web::Data<Arc<Mutex<app_state::AppState>>>;
 type InboundRequest = web::Json<RequestBody>;
 
 #[get("/weather")]
@@ -106,7 +105,7 @@ async fn main() -> std::io::Result<()> {
 
     match (utils::get_api_key(), utils::load_city_db()) {
         (Some(api_key), Some(city_db)) => {
-            let app_state = app_state::APPState::build(api_key, city_db);
+            let app_state = app_state::AppState::build(api_key, city_db);
 
             let data: SharedState = web::Data::new(Arc::new(Mutex::new(app_state)));
 

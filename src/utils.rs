@@ -29,7 +29,15 @@ pub fn load_city_db() -> Option<Vec<City>> {
         Ok(db_path) => {
             let mut file_path = PathBuf::from(db_path);
 
-            file_path.set_file_name(CITY_DB_FILENAME);
+            if !file_path.is_dir() {
+                log::error!(
+                    "Database path is not a valid directory - {}",
+                    file_path.to_string_lossy()
+                );
+                return None;
+            }
+
+            file_path.push(CITY_DB_FILENAME);
 
             match std::fs::read_to_string(file_path) {
                 Ok(str_content) => match serde_json::from_str::<Vec<City>>(&str_content) {

@@ -32,20 +32,20 @@ impl<T> CachedElement<T> {
     }
 }
 
-pub struct APPState {
+pub struct AppState {
     pub api_client: APIClient,
     pub city_db: HashMap<(String, String), CityEntry>,
     api_cache: HashMap<CacheKey, CachedElement<APIResponse>>,
 }
 
-impl APPState {
+impl AppState {
     pub const CACHE_EXPIRY_MILIS: u128 = 600_000; // 10 minutes
 
     pub fn build(api_key: String, city_list: Vec<City>) -> Self {
-        Self {
+        AppState {
             api_cache: HashMap::new(),
             api_client: crate::weather_api::APIClient::build(api_key),
-            city_db: APPState::init_hash_table(city_list),
+            city_db: AppState::init_hash_table(city_list),
         }
     }
 
@@ -58,7 +58,7 @@ impl APPState {
             if !self.check_and_clear_cache(&cache_key) {
                 log::debug!("Generating cache for api response - {}", &cache_key.city_id);
 
-                let cache = CachedElement::new(response, APPState::CACHE_EXPIRY_MILIS);
+                let cache = CachedElement::new(response, AppState::CACHE_EXPIRY_MILIS);
 
                 let _ = self.api_cache.insert(cache_key, cache);
 
@@ -162,7 +162,7 @@ mod test_app_state {
 
     #[test]
     fn check_cache_storage() {
-        let mut app_state = APPState::build("11".into(), vec![]);
+        let mut app_state = AppState::build("11".into(), vec![]);
 
         let cache_key = CacheKey::from(
             1,

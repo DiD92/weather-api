@@ -3,18 +3,15 @@ use actix_web::{middleware::Logger, web};
 use env_logger::Env;
 use std::sync::{Arc, Mutex};
 
-mod api_models;
+mod app_state;
+mod models;
 mod utils;
 mod weather_api;
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
-pub enum RequestType {
-    CurrentWeather,
-    WeatherForecast,
-}
+use crate::models::{api::APIResponse, request::*, state::CacheKey};
 
-type SharedState = web::Data<Arc<Mutex<api_models::APPState>>>;
-type InboundRequest = web::Json<api_models::RequestBody>;
+type SharedState = web::Data<Arc<Mutex<app_state::APPState>>>;
+type InboundRequest = web::Json<RequestBody>;
 
 #[get("/weather")]
 async fn current_weather_route(data: SharedState, body: InboundRequest) -> impl Responder {
@@ -34,16 +31,13 @@ async fn process_route(
     let mut app_state = data.lock().unwrap();
 
     if let Some(city_keys) = app_state.get_city_keys_for_query(&body.city_query) {
-        let cache_key =
-            api_models::CacheKey::from(city_keys.city_id, body.temperature_unit, request_type);
+        let cache_key = CacheKey::from(city_keys.city_id, body.temperature_unit, request_type);
 
         if app_state.has_valid_cache_for(&cache_key) {
             let cached_response = app_state.get_cache_for(&cache_key).unwrap();
-            HttpResponse::Ok().json(api_models::RequestResponse::build_success(
-                cached_response.to_owned(),
-            ))
+            HttpResponse::Ok().json(RequestResponse::build_success(cached_response.to_owned()))
         } else {
-            let api_result: Result<weather_api::APIResponse, reqwest::Error>;
+            let api_result: Result<APIResponse, reqwest::Error>;
 
             match request_type {
                 RequestType::CurrentWeather => {
@@ -71,9 +65,8 @@ async fn process_route(
             match api_result {
                 Ok(response) => {
                     if response.cod.is_some() && response.cod.unwrap() != 200 {
-                        HttpResponse::Ok().json(api_models::RequestResponse::build_failure(
-                            response.message.unwrap(),
-                        ))
+                        HttpResponse::Ok()
+                            .json(RequestResponse::build_failure(response.message.unwrap()))
                     } else {
                         if let Err(msg) = app_state.cache_response(cache_key, response.clone()) {
                             log::warn!(
@@ -85,16 +78,16 @@ async fn process_route(
                             );
                         }
 
-                        HttpResponse::Ok()
-                            .json(api_models::RequestResponse::build_success(response))
+                        HttpResponse::Ok().json(RequestResponse::build_success(response))
                     }
                 }
-                Err(err) => HttpResponse::Ok()
-                    .json(api_models::RequestResponse::build_failure(err.to_string())),
+                Err(err) => {
+                    HttpResponse::Ok().json(RequestResponse::build_failure(err.to_string()))
+                }
             }
         }
     } else {
-        HttpResponse::Ok().json(api_models::RequestResponse::build_failure(format!(
+        HttpResponse::Ok().json(RequestResponse::build_failure(format!(
             "No valid city_id found for query {}",
             &body.city_query
         )))
@@ -113,7 +106,7 @@ async fn main() -> std::io::Result<()> {
 
     match (utils::get_api_key(), utils::load_city_db()) {
         (Some(api_key), Some(city_db)) => {
-            let app_state = api_models::APPState::build(api_key, city_db);
+            let app_state = app_state::APPState::build(api_key, city_db);
 
             let data: SharedState = web::Data::new(Arc::new(Mutex::new(app_state)));
 

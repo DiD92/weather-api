@@ -1,6 +1,6 @@
 [package]
 name = "weather-retrieve"
-version = "0.9.3"
+version = "0.9.9"
 authors = ["Dídac Sementé Fernández <didac.semente@gmail.com>"]
 edition = "2018"
 
@@ -11,7 +11,7 @@ serde_with = { version = "1.5", default-features = false }
 serde_json = "1.0"
 reqwest = { version = "0.10", features = ["json"] }
 env_logger = "0.7"
-log = "0.4"
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
 
 [dev-dependencies]
 actix-rt = "1.1"

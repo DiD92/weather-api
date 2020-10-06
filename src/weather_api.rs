@@ -1,65 +1,5 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize, Serialize, Clone)]
-pub struct APIResponse {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lat: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lon: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cod: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current: Option<WeatherCurrent>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hourly: Option<Vec<WeatherHourly>>,
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-pub struct WeatherCurrent {
-    pub dt: u32,
-    pub sunrise: u32,
-    pub sunset: u32,
-    pub temp: f32,
-    pub feels_like: f32,
-    pub pressure: u32,
-    pub humidity: u32,
-    pub dew_point: f32,
-    pub uvi: f32,
-    pub clouds: u32,
-    pub visibility: u32,
-    pub wind_speed: f32,
-    pub wind_deg: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename(deserialize = "weather"))]
-    pub conditions: Option<Vec<WeatherCondition>>,
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-pub struct WeatherCondition {
-    #[serde(rename(deserialize = "main"))]
-    pub condition: String,
-    pub description: String,
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-pub struct WeatherHourly {
-    pub dt: u32,
-    pub temp: f32,
-    pub feels_like: f32,
-    pub pressure: u32,
-    pub humidity: u32,
-    pub dew_point: f32,
-    pub clouds: u32,
-    pub visibility: u32,
-    pub wind_speed: f32,
-    pub wind_deg: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename(deserialize = "weather"))]
-    pub conditions: Option<Vec<WeatherCondition>>,
-    pub pop: f32,
-}
+use crate::models::api::APIResponse;
+use crate::models::request::TemperatureFormat;
 
 pub struct APIClient {
     pub client: reqwest::Client,
@@ -82,7 +22,7 @@ impl APIClient {
         &self,
         city_lat: f32,
         city_lon: f32,
-        temperature_units: crate::api_models::TemperatureFormat,
+        temperature_units: TemperatureFormat,
     ) -> Result<APIResponse, reqwest::Error> {
         log::debug!(
             "Querying OpenWeatherMap API for coords - ({},{})",
@@ -105,7 +45,7 @@ impl APIClient {
         &self,
         city_lat: f32,
         city_lon: f32,
-        temperature_units: crate::api_models::TemperatureFormat,
+        temperature_units: TemperatureFormat,
     ) -> Result<APIResponse, reqwest::Error> {
         log::debug!(
             "Querying OpenWeatherMap API for coords - ({},{})",
@@ -126,7 +66,7 @@ impl APIClient {
         &self,
         city_lat: f32,
         city_lon: f32,
-        temperature_units: crate::api_models::TemperatureFormat,
+        temperature_units: TemperatureFormat,
         exclude_set: &str,
     ) -> Result<APIResponse, reqwest::Error> {
         let query_params = &[
@@ -161,7 +101,7 @@ mod test_api_client {
         let dummy_key = "aa";
 
         let city_coords: (f32, f32) = (1.0, 1.0);
-        let temperature_fmt = crate::api_models::TemperatureFormat::Metric;
+        let temperature_fmt = TemperatureFormat::Metric;
 
         let client = APIClient::build(dummy_key.to_owned());
 
@@ -182,7 +122,7 @@ mod test_api_client {
 
         let api_key = api_key.unwrap();
         let city_coords: (f32, f32) = (34.940079, 36.321911); // Coords for city_id 2960
-        let temperature_fmt = crate::api_models::TemperatureFormat::Metric;
+        let temperature_fmt = TemperatureFormat::Metric;
 
         let client = APIClient::build(api_key.to_owned());
 

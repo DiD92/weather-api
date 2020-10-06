@@ -1,99 +1,8 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::{de::Error, Deserialize, Deserializer, Serialize};
-
-use crate::weather_api::APIResponse;
-
-#[derive(Deserialize, Serialize)]
-pub struct City {
-    pub id: u32,
-    pub lat: f32,
-    pub lon: f32,
-    pub name: String,
-    #[serde(rename(deserialize = "ctry"))]
-    pub country: String,
-}
-
-#[derive(Deserialize, Serialize, PartialEq, Eq, Hash, Copy, Clone, Debug)]
-#[serde(rename_all = "lowercase")]
-pub enum TemperatureFormat {
-    Metric,
-    Imperial,
-    Standard,
-}
-
-impl Display for TemperatureFormat {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            TemperatureFormat::Metric => write!(f, "metric"),
-            TemperatureFormat::Imperial => write!(f, "imperial"),
-            TemperatureFormat::Standard => write!(f, "standard"),
-        }
-    }
-}
-
-fn deserialize_from_str<'de, D>(deserializer: D) -> Result<TemperatureFormat, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let mut s: String = Deserialize::deserialize(deserializer)?;
-
-    s.make_ascii_lowercase();
-
-    match s.as_ref() {
-        "f" | "fahrenheit" => Ok(TemperatureFormat::Imperial),
-        "c" | "celsius" => Ok(TemperatureFormat::Metric),
-        "k" | "kelvin" => Ok(TemperatureFormat::Standard),
-        &_ => {
-            log::warn!("Invalid temperature parameter supplied - {}", s);
-            Err(Error::custom("Invalid temperature parameter."))
-        }
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct RequestBody {
-    pub city_query: String,
-    #[serde(deserialize_with = "deserialize_from_str")]
-    #[serde(rename = "units")]
-    pub temperature_unit: TemperatureFormat,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct RequestResponse {
-    success: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<ResponseData>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    msg: Option<String>,
-}
-
-impl RequestResponse {
-    pub fn build_success(api_response: APIResponse) -> Self {
-        RequestResponse {
-            success: true,
-            data: Some(ResponseData::Success(api_response)),
-            msg: None,
-        }
-    }
-
-    pub fn build_failure(failure_msg: String) -> Self {
-        RequestResponse {
-            success: false,
-            data: None,
-            msg: Some(failure_msg),
-        }
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum ResponseData {
-    Success(APIResponse),
-    Failure(String),
-}
+use crate::models::{api::APIResponse, state::*};
+use crate::weather_api::APIClient;
 
 pub struct CachedElement<T> {
     pub element: T,
@@ -123,46 +32,8 @@ impl<T> CachedElement<T> {
     }
 }
 
-#[derive(Copy, Clone)]
-pub struct CityEntry {
-    pub city_id: u32,
-    pub city_lat: f32,
-    pub city_lon: f32,
-}
-
-impl CityEntry {
-    pub fn from(city_id: u32, city_lat: f32, city_lon: f32) -> Self {
-        CityEntry {
-            city_id,
-            city_lat,
-            city_lon,
-        }
-    }
-}
-
-#[derive(Eq, PartialEq, Hash, Debug, Copy, Clone)]
-pub struct CacheKey {
-    pub city_id: u32,
-    pub temperature_fmt: TemperatureFormat,
-    pub req_type: crate::RequestType,
-}
-
-impl CacheKey {
-    pub fn from(
-        city_id: u32,
-        temperature_fmt: TemperatureFormat,
-        req_type: crate::RequestType,
-    ) -> Self {
-        CacheKey {
-            city_id,
-            temperature_fmt,
-            req_type,
-        }
-    }
-}
-
 pub struct APPState {
-    pub api_client: crate::weather_api::APIClient,
+    pub api_client: APIClient,
     pub city_db: HashMap<(String, String), CityEntry>,
     api_cache: HashMap<CacheKey, CachedElement<APIResponse>>,
 }
@@ -287,6 +158,8 @@ mod test_cached_element {
 mod test_app_state {
     use super::*;
 
+    use crate::models::{api::WeatherCurrent, request::TemperatureFormat};
+
     #[test]
     fn check_cache_storage() {
         let mut app_state = APPState::build("11".into(), vec![]);
@@ -317,7 +190,7 @@ mod test_app_state {
             lon: None,
             cod: None,
             message: None,
-            current: Some(crate::weather_api::WeatherCurrent {
+            current: Some(WeatherCurrent {
                 dt: 1,
                 sunrise: 1,
                 sunset: 1,
